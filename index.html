@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>FaceAuth — Autenticação Facial</title>
+  <script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;800&family=DM+Sans:wght@300;400;500&display=swap');
+
+    :root {
+      --bg: #0a0a0f;
+      --surface: #13131a;
+      --surface2: #1c1c27;
+      --accent: #7c5cfc;
+      --accent2: #c084fc;
+      --success: #22d3a5;
+      --error: #f87171;
+      --text: #f0f0ff;
+      --muted: #6b6b8a;
+      --border: rgba(124, 92, 252, 0.2);
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 0;
+      overflow-x: hidden;
+    }
+
+    /* Background animado */
+    body::before {
+      content: '';
+      position: fixed;
+      top: -50%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      background: radial-gradient(ellipse at 30% 20%, rgba(124,92,252,0.08) 0%, transparent 50%),
+                  radial-gradient(ellipse at 70% 80%, rgba(192,132,252,0.06) 0%, transparent 50%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .app {
+      width: 100%;
+      max-width: 420px;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      z-index: 1;
+      padding: 0 0 40px;
+    }
+
+    /* Header */
+    header {
+      padding: 48px 24px 24px;
+      text-align: center;
+    }
+
+    .logo {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+
+    .logo-icon {
+      width: 36px;
+      height: 36px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+    }
+
+    .logo-text {
+      font-family: 'Syne', sans-serif;
+      font-weight: 800;
+      font-size: 22px;
+      background: linear-gradient(135deg, var(--accent2), #fff);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .tagline {
+      font-size: 13px;
+      color: var(--muted);
+      letter-spacing: 0.05em;
+    }
+
+    /* Card principal */
+    .card {
+      margin: 0 16px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      overflow: hidden;
+      flex: 1;
+    }
+
+    /* Área da câmara */
+    .camera-section {
+      position: relative;
+      background: #000;
+      aspect-ratio: 3/4;
+      overflow: hidden;
+    }
+
+    #video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transform: scaleX(-1); /* espelho */
+      display: block;
+    }
+
+    #overlay {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      transform: scaleX(-1);
+    }
+
+    /* Frame de deteção */
+    .face-frame {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -52%);
+      width: 200px;
+      height: 240px;
+      pointer-events: none;
+    }
+
+    .face-frame::before,
+    .face-frame::after {
+      content: '';
+      position: absolute;
+      width: 40px;
+      height: 40px;
+      border-color: var(--accent);
+      border-style: solid;
+    }
+
+    .face-frame::before {
+      top: 0; left: 0;
+      border-width: 3px 0 0 3px;
+      border-radius: 4px 0 0 0;
+    }
+
+    .face-frame::after {
+      bottom: 0; right: 0;
+      border-width: 0 3px 3px 0;
+      border-radius: 0 0 4px 0;
+    }
+
+    .face-frame-tr, .face-frame-bl {
+      position: absolute;
+      width: 40px;
+      height: 40px;
+      border-color: var(--accent);
+      border-style: solid;
+    }
+
+    .face-frame-tr {
+      top: 0; right: 0;
+      border-width: 3px 3px 0 0;
+      border-radius: 0 4px 0 0;
+    }
+
+    .face-frame-bl {
+      bottom: 0; left: 0;
+      border-width: 0 0 3px 3px;
+      border-radius: 0 0 0 4px;
+    }
+
+    /* Overlay de loading */
+    .loading-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(10,10,15,0.85);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      backdrop-filter: blur(4px);
+    }
+
+    .spinner {
+      width: 44px;
+      height: 44px;
+      border: 3px solid rgba(124,92,252,0.2);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .loading-text {
+      font-size: 14px;
+      color: var(--muted);
+    }
+
+    /* Overlay de sucesso */
+    .success-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(34,211,165,0.1);
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      backdrop-filter: blur(2px);
+    }
+
+    .success-overlay.show {
+      display: flex;
+      animation: fadeIn 0.3s ease;
+    }
+
+    .success-icon {
+      font-size: 64px;
+      animation: popIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    @keyframes popIn {
+      from { transform: scale(0); opacity: 0; }
+      to { transform: scale(1); opacity: 1; }
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    /* Secção inferior */
+    .bottom-section {
+      padding: 20px 20px 24px;
+    }
+
+    /* Desafio */
+    .challenge-box {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 16px;
+      min-height: 72px;
+    }
+
+    .challenge-emoji {
+      font-size: 36px;
+      line-height: 1;
+      flex-shrink: 0;
+      filter: drop-shadow(0 0 8px rgba(124,92,252,0.4));
+    }
+
+    .challenge-info { flex: 1; }
+
+    .challenge-label {
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 4px;
+    }
+
+    .challenge-action {
+      font-family: 'Syne', sans-serif;
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .challenge-desc {
+      font-size: 13px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    /* Status da deteção */
+    .detection-status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 16px;
+      padding: 10px 14px;
+      border-radius: 10px;
+      font-size: 13px;
+      background: var(--surface2);
+      border: 1px solid transparent;
+      transition: all 0.3s ease;
+      min-height: 42px;
+    }
+
+    .detection-status.detecting {
+      border-color: rgba(124,92,252,0.3);
+      color: var(--accent2);
+    }
+
+    .detection-status.success {
+      border-color: rgba(34,211,165,0.3);
+      background: rgba(34,211,165,0.08);
+      color: var(--success);
+    }
+
+    .detection-status.error {
+      border-color: rgba(248,113,113,0.3);
+      background: rgba(248,113,113,0.08);
+      color: var(--error);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--muted);
+      flex-shrink: 0;
+      transition: background 0.3s;
+    }
+
+    .detection-status.detecting .status-dot {
+      background: var(--accent);
+      animation: pulse 1s ease-in-out infinite;
+    }
+
+    .detection-status.success .status-dot { background: var(--success); }
+    .detection-status.error .status-dot { background: var(--error); }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.5; transform: scale(0.8); }
+    }
+
+    /* Barra de confiança */
+    .confidence-bar {
+      margin-bottom: 16px;
+      display: none;
+    }
+
+    .confidence-bar.show { display: block; }
+
+    .confidence-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    .confidence-track {
+      height: 4px;
+      background: var(--surface2);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .confidence-fill {
+      height: 100%;
+      border-radius: 2px;
+      background: linear-gradient(90deg, var(--accent), var(--accent2));
+      transition: width 0.2s ease;
+      width: 0%;
+    }
+
+    /* Botão */
+    .btn {
+      width: 100%;
+      padding: 16px;
+      border: none;
+      border-radius: 14px;
+      font-family: 'Syne', sans-serif;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      letter-spacing: 0.02em;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      color: white;
+    }
+
+    .btn-primary:hover { transform: translateY(-1px); filter: brightness(1.1); }
+    .btn-primary:active { transform: scale(0.98); }
+    .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+    .btn-ghost {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 14px;
+      padding: 12px;
+      margin-top: 10px;
+    }
+
+    .btn-ghost:hover { border-color: var(--accent); color: var(--accent2); }
+
+    /* Authenticated screen */
+    .auth-screen {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 48px 24px;
+      gap: 16px;
+      flex: 1;
+    }
+
+    .auth-screen.show { display: flex; }
+
+    .auth-badge {
+      width: 100px;
+      height: 100px;
+      border-radius: 50%;
+      background: rgba(34,211,165,0.1);
+      border: 2px solid rgba(34,211,165,0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 48px;
+      margin-bottom: 8px;
+      animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    .auth-title {
+      font-family: 'Syne', sans-serif;
+      font-size: 28px;
+      font-weight: 800;
+      color: var(--success);
+    }
+
+    .auth-subtitle {
+      font-size: 15px;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    /* Countdown */
+    .countdown {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      background: rgba(0,0,0,0.6);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 4px 10px;
+      font-size: 13px;
+      font-family: 'Syne', sans-serif;
+      color: var(--text);
+      backdrop-filter: blur(4px);
+    }
+
+    .countdown.urgent { color: var(--error); border-color: rgba(248,113,113,0.4); }
+  </style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="logo">
+      <div class="logo-icon">👁</div>
+      <span class="logo-text">FaceAuth</span>
+    </div>
+    <p class="tagline">Autenticação por expressão facial</p>
+  </header>
+
+  <!-- Ecrã principal -->
+  <div id="main-screen" style="display:flex; flex-direction:column; flex:1; padding: 0 0 0;">
+    <div class="card">
+      <!-- Câmara -->
+      <div class="camera-section">
+        <video id="video" autoplay muted playsinline></video>
+        <canvas id="overlay"></canvas>
+        <div class="face-frame">
+          <div class="face-frame-tr"></div>
+          <div class="face-frame-bl"></div>
+        </div>
+        <div class="loading-overlay" id="loading-overlay">
+          <div class="spinner"></div>
+          <span class="loading-text" id="loading-text">A carregar modelos de IA...</span>
+        </div>
+        <div class="success-overlay" id="success-overlay">
+          <div class="success-icon">✅</div>
+        </div>
+        <div class="countdown" id="countdown" style="display:none">30s</div>
+      </div>
+
+      <!-- Controlos -->
+      <div class="bottom-section">
+        <!-- Desafio -->
+        <div class="challenge-box" id="challenge-box">
+          <div class="challenge-emoji" id="challenge-emoji">🎭</div>
+          <div class="challenge-info">
+            <div class="challenge-label">O teu desafio</div>
+            <div class="challenge-action" id="challenge-action">A carregar...</div>
+            <div class="challenge-desc" id="challenge-desc">Aguarda um momento</div>
+          </div>
+        </div>
+
+        <!-- Status -->
+        <div class="detection-status" id="detection-status">
+          <div class="status-dot"></div>
+          <span id="status-text">A iniciar câmara...</span>
+        </div>
+
+        <!-- Confiança -->
+        <div class="confidence-bar" id="confidence-bar">
+          <div class="confidence-label">
+            <span>Confiança da expressão</span>
+            <span id="confidence-val">0%</span>
+          </div>
+          <div class="confidence-track">
+            <div class="confidence-fill" id="confidence-fill"></div>
+          </div>
+        </div>
+
+        <!-- Botões -->
+        <button class="btn btn-primary" id="start-btn" onclick="startChallenge()" disabled>
+          Iniciar Verificação
+        </button>
+        <button class="btn btn-ghost" id="new-challenge-btn" onclick="getNewChallenge()" style="display:none">
+          Novo desafio
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Ecrã autenticado -->
+  <div class="auth-screen" id="auth-screen">
+    <div class="auth-badge">🔓</div>
+    <div class="auth-title">Bem-vindo!</div>
+    <p class="auth-subtitle">Identidade humana confirmada.<br>Acesso concedido com sucesso.</p>
+    <button class="btn btn-ghost" style="margin-top:16px" onclick="resetApp()">
+      Testar novamente
+    </button>
+  </div>
+</div>
+
+<script>
+const MODEL_URL = 'https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/weights';
+
+let currentChallenge = null;
+let isRunning = false;
+let detectionLoop = null;
+let countdownInterval = null;
+let timeLeft = 30;
+let modelsLoaded = false;
+
+// Mapeamento de expressões face-api → desafio
+const EXPRESSION_MAP = {
+  smile: expr => expr.happy,
+  open_mouth: expr => expr.surprised * 0.7 + expr.happy * 0.3,
+  eyes_closed: expr => expr.neutral < 0.3 ? 0.8 : 0,
+  surprised: expr => expr.surprised
+};
+
+async function init() {
+  try {
+    setStatus('A carregar modelos de IA...', '');
+    document.getElementById('loading-text').textContent = 'A carregar modelos de IA...';
+
+    await Promise.all([
+      faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+      faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL),
+      faceapi.nets.faceLandmark68TinyNet.loadFromUri(MODEL_URL),
+    ]);
+
+    modelsLoaded = true;
+    document.getElementById('loading-text').textContent = 'A iniciar câmara...';
+
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }
+    });
+
+    const video = document.getElementById('video');
+    video.srcObject = stream;
+    await new Promise(r => video.onloadedmetadata = r);
+
+    document.getElementById('loading-overlay').style.display = 'none';
+
+    await getNewChallenge();
+    setStatus('Câmara pronta. Clica em Iniciar Verificação.', '');
+    document.getElementById('start-btn').disabled = false;
+
+  } catch (err) {
+    document.getElementById('loading-text').textContent = 'Erro: ' + err.message;
+    setStatus('Erro ao aceder à câmara.', 'error');
+  }
+}
+
+async function getNewChallenge() {
+  const res = await fetch('/api/challenge');
+  const data = await res.json();
+  currentChallenge = data.challenge;
+
+  document.getElementById('challenge-emoji').textContent = currentChallenge.emoji;
+  document.getElementById('challenge-action').textContent = currentChallenge.label;
+  document.getElementById('challenge-desc').textContent = currentChallenge.description;
+  document.getElementById('new-challenge-btn').style.display = 'none';
+
+  if (isRunning) startDetectionLoop();
+}
+
+function startChallenge() {
+  if (!modelsLoaded || !currentChallenge) return;
+
+  isRunning = true;
+  timeLeft = 30;
+  document.getElementById('start-btn').style.display = 'none';
+  document.getElementById('new-challenge-btn').style.display = 'block';
+  document.getElementById('countdown').style.display = 'block';
+  document.getElementById('confidence-bar').classList.add('show');
+
+  startCountdown();
+  startDetectionLoop();
+  setStatus('A detetar expressão...', 'detecting');
+}
+
+function startCountdown() {
+  clearInterval(countdownInterval);
+  const el = document.getElementById('countdown');
+  countdownInterval = setInterval(() => {
+    timeLeft--;
+    el.textContent = timeLeft + 's';
+    if (timeLeft <= 10) el.classList.add('urgent');
+    if (timeLeft <= 0) {
+      clearInterval(countdownInterval);
+      stopDetection();
+      setStatus('Tempo esgotado! Tenta novamente.', 'error');
+      resetButtons();
+    }
+  }, 1000);
+}
+
+function startDetectionLoop() {
+  clearInterval(detectionLoop);
+  const video = document.getElementById('video');
+  const canvas = document.getElementById('overlay');
+  const displaySize = { width: video.clientWidth, height: video.clientHeight };
+  faceapi.matchDimensions(canvas, displaySize);
+
+  detectionLoop = setInterval(async () => {
+    if (!isRunning) return;
+
+    const detections = await faceapi
+      .detectAllFaces(video, new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.4 }))
+      .withFaceLandmarks(true)
+      .withFaceExpressions();
+
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (!detections.length) {
+      setStatus('Nenhum rosto detetado. Aproxima a câmara.', 'detecting');
+      updateConfidence(0);
+      return;
+    }
+
+    const resized = faceapi.resizeResults(detections, displaySize);
+    resized.forEach(d => {
+      const box = d.detection.box;
+      ctx.strokeStyle = 'rgba(124,92,252,0.6)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(box.x, box.y, box.width, box.height);
+    });
+
+    const expr = detections[0].expressions;
+    const confidence = EXPRESSION_MAP[currentChallenge.id]
+      ? EXPRESSION_MAP[currentChallenge.id](expr)
+      : 0;
+
+    updateConfidence(confidence);
+
+    if (confidence > 0.65) {
+      await validateWithServer(currentChallenge.id, confidence);
+    } else {
+      setStatus('A detetar: ' + currentChallenge.label + '...', 'detecting');
+    }
+
+  }, 400);
+}
+
+function updateConfidence(val) {
+  const pct = Math.min(100, Math.round(val * 100));
+  document.getElementById('confidence-fill').style.width = pct + '%';
+  document.getElementById('confidence-val').textContent = pct + '%';
+}
+
+async function validateWithServer(expression, confidence) {
+  stopDetection();
+
+  const res = await fetch('/api/verify', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ detectedExpression: expression, confidence })
+  });
+
+  const data = await res.json();
+
+  if (data.success) {
+    setStatus('✓ ' + data.message, 'success');
+    document.getElementById('success-overlay').classList.add('show');
+    setTimeout(() => {
+      document.getElementById('main-screen').style.display = 'none';
+      document.getElementById('auth-screen').classList.add('show');
+    }, 1800);
+  } else {
+    setStatus(data.message, 'error');
+    resetButtons();
+    if (!data.blocked) await getNewChallenge();
+  }
+}
+
+function stopDetection() {
+  isRunning = false;
+  clearInterval(detectionLoop);
+  clearInterval(countdownInterval);
+  document.getElementById('countdown').style.display = 'none';
+}
+
+function resetButtons() {
+  document.getElementById('start-btn').style.display = 'block';
+  document.getElementById('start-btn').disabled = false;
+  document.getElementById('new-challenge-btn').style.display = 'none';
+  document.getElementById('confidence-bar').classList.remove('show');
+  updateConfidence(0);
+}
+
+function resetApp() {
+  document.getElementById('auth-screen').classList.remove('show');
+  document.getElementById('main-screen').style.display = 'flex';
+  document.getElementById('success-overlay').classList.remove('show');
+  resetButtons();
+  getNewChallenge();
+  setStatus('Câmara pronta. Clica em Iniciar Verificação.', '');
+}
+
+function setStatus(text, type) {
+  const el = document.getElementById('detection-status');
+  el.className = 'detection-status' + (type ? ' ' + type : '');
+  document.getElementById('status-text').textContent = text;
+}
+
+window.addEventListener('load', () => {
+  setTimeout(init, 500);
+});
+</script>
+</body>
+</html>
